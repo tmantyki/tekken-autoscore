@@ -11,9 +11,9 @@ The program will update the score to the plaintext file `live_score`. To modify 
 The program will assume that the player is playing on 1P (left) side by default. Switching the playing side will flip the position of the current score.
 
 **Hotkeys**
-F5: Set the playing side to 1P (left)
-F8: Set the playing side to 2P (right)
-F9: Reset the score to 0-0
+F5: Set the playing side to 1P (left)  
+F8: Set the playing side to 2P (right)  
+F9: Reset the score to 0-0  
 Keyboard Interrupt: Exit program
 
 Note: the application will attempt to retrieve a new PID value every 10 seconds if the previous game process dies. Hotkeys may or may not work as intended while waiting for the new process.
