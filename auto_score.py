@@ -73,9 +73,8 @@ class AutoScore:
                 self.updatePID()
                 buffer = c_ubyte()
                 bufferSize = 1
-                #ptr_chain = [0x4]
-                # ptr = self.base + 0x34CB488
-                ptr = self.base + 0x34CAFB0
+                #ptr = self.base + 0x34CAFB0
+                ptr = self.base + 0x034CE030
                 ptr_chain = [0x498, 0x14]
                 return forwardPtr(self.processHandle, ptr, ptr_chain, buffer, bufferSize)
             except TypeError:
@@ -89,8 +88,8 @@ class AutoScore:
                 p1_rounds = c_ubyte()
                 p2_rounds = c_ubyte()
                 bufferSize = 1
-                p1_ptr = self.base + 0x34CA480
-                p2_ptr = self.base + 0x34CA570
+                p1_ptr = self.base + 0x34CD500
+                p2_ptr = self.base + 0x34CD5F0
                 ReadProcessMemory(self.processHandle, p1_ptr, byref(p1_rounds), 1, byref(bytesRead))
                 ReadProcessMemory(self.processHandle, p2_ptr, byref(p2_rounds), 1, byref(bytesRead))
             except TypeError:
