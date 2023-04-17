@@ -36,14 +36,50 @@ class AutoScore:
         self.base = None
         self.live_score = LiveScore(init_p1, init_p2)
         self.rounds_age = 0
+        self.time_ref = time.time()
         self.prev_rounds = (0, 0)
+        self.prev_side = None
+        self.history = {}
+        self.most_recent_opponent = None
         self.updateProcess()
         self.updateScore()
-        self.live_score.writeToFile()
-        print(self.live_score.__repr__())
+        if not self.most_recent_opponent:
+            self.live_score.writeToFile(side=self.getPlayerSide())
+            print(self.live_score.__repr__(side=self.getPlayerSide()))
+
+    def loadHistory(self, opponentName):
+        if opponentName in self.history.keys():
+            print("Loading existing record with {}".format(opponentName))
+            self.live_score = self.history[opponentName]
+        else:
+            print("Creating new record with {}".format(opponentName))
+            self.live_score = LiveScore()
+            self.history[opponentName] = self.live_score
+        self.live_score.writeToFile(side=self.getPlayerSide())
+        print(self.live_score.__repr__(side=self.getPlayerSide()))    
+    
+    def saveHistory(self):
+        op_name = self.readOpponentName()
+        if op_name:
+            self.history[op_name] = self.live_score
+        else:
+            self.history[self.most_recent_opponent] = self.live_score
+
+    def checkNewOpponent(self):
+        op_name = self.readOpponentName()
+        if not op_name:
+            return False
+        if not op_name in self.history.keys():
+            return True
+        if self.history[op_name] == self.live_score:
+            return False
+        else:
+            return True
 
     def resetScores(self):
-        self.live_score.resetScores()
+        self.most_recent_opponent = None
+        self.history.pop(self.readOpponentName(), None)
+        self.live_score = LiveScore()
 
     def updateProcess(self):
         while self.pid == None:
@@ -60,25 +96,85 @@ class AutoScore:
                     self.processHandle = OpenProcess(PROCESS_ALL_ACCESS, False, self.pid)
                     pm.close_process()
                     print("Tekken 7 PID acquired:", self.pid)
-                    # print("base++", hex(self.base))
                     return self.pid
             time.sleep(10)
     
     def closeProcess(self):
         CloseHandle(self.processHandle)
 
-    def readSideFlag(self):
+    def readPlayerSideFlag(self):
         while True:
             try:
                 self.updatePID()
                 buffer = c_ubyte()
                 bufferSize = 1
-                #ptr = self.base + 0x34CAFB0
                 ptr = self.base + 0x034CE030
                 ptr_chain = [0x498, 0x14]
                 return forwardPtr(self.processHandle, ptr, ptr_chain, buffer, bufferSize)
             except TypeError:
                 continue
+
+    def readViewSideFlag(self):
+        self.updatePID()
+        bytesRead = c_ulonglong()
+        buffer = c_ubyte()
+        ptr = self.base + 0x034DF554
+        ReadProcessMemory(self.processHandle, ptr, byref(buffer), 1, byref(bytesRead))
+        return buffer.value
+    
+    def updateScoreOrientation(self, writing=True):
+        if self.prev_side == None:
+            self.prev_side = self.getPlayerSide()
+            return
+        if self.prev_side != self.getPlayerSide():
+            self.prev_side = self.getPlayerSide()
+            if writing:
+                print("Flipping score to match playing side")
+                self.live_score.writeToFile(side=self.getPlayerSide())
+                print(self.live_score.__repr__(side=self.getPlayerSide()))
+            else:
+                print("\nSilent\n")
+
+    def readOpponentName(self):
+        confirm_name = None
+        ptr = self.base + 0x34D55A0
+        ptr_chain = [0x0, 0x8, 0x11C]
+        while True:
+            name = self.readString(ptr, ptr_chain, max_len=256)
+            if name == "NOT_LOGGED_IN" or name == "":
+                time.sleep(0.01)
+                return None
+            else:
+                if name == confirm_name:
+                    self.most_recent_opponent = name
+                    return name
+                else:
+                    confirm_name = name
+                    time.sleep(0.01)
+                    continue
+    
+    def readString(self, ptr, ptr_chain, max_len=256):
+        result = ''
+        ptr_chain_copy = ptr_chain.copy()
+        for i in range(max_len):
+            while True:
+                try:
+                    self.updatePID()
+                    buffer = c_ubyte()
+                    bufferSize = 1
+                    char_val = forwardPtr(self.processHandle, ptr, ptr_chain_copy, buffer, bufferSize)
+                    if char_val == 0:
+                        return result
+                    result += chr(char_val)
+                    break
+                except TypeError:
+                    continue
+            ptr_chain_copy[-1] += 1
+        return result
+
+    def getPlayerSide(self):
+        return int(self.readPlayerSideFlag() != self.readViewSideFlag())
+        
 
     def readRounds(self):
         while True:
@@ -87,37 +183,39 @@ class AutoScore:
                 bytesRead = c_ulonglong()
                 p1_rounds = c_ubyte()
                 p2_rounds = c_ubyte()
-                bufferSize = 1
                 p1_ptr = self.base + 0x34CD500
                 p2_ptr = self.base + 0x34CD5F0
                 ReadProcessMemory(self.processHandle, p1_ptr, byref(p1_rounds), 1, byref(bytesRead))
                 ReadProcessMemory(self.processHandle, p2_ptr, byref(p2_rounds), 1, byref(bytesRead))
             except TypeError:
                 continue
-            if self.readSideFlag() == 0:
+            if self.readPlayerSideFlag() == 0:
                 return p1_rounds.value, p2_rounds.value
-            elif self.readSideFlag() == 1:
+            else:
                 return p2_rounds.value, p1_rounds.value
 
     def updateScore(self):
-        min_age = 50
+        if self.checkNewOpponent():
+            self.loadHistory(self.readOpponentName())
+            self.updateScoreOrientation(writing=False)
+        self.updateScoreOrientation()
+        min_age = 3 # seconds
         o_p1, o_p2 = self.prev_rounds
         n_p1, n_p2 = self.prev_rounds = self.readRounds()
         if (o_p1, o_p2) != (n_p1, n_p2):
             if (n_p1 == 3) ^ (n_p2 == 3):
-                if self.rounds_age >= min_age:
+                if time.time() - self.time_ref >= min_age:
                     if n_p1 == 3 and o_p1 == 2 and n_p2 == o_p2:
-                        self.live_score.incrementScore(side=1)
-                        self.live_score.writeToFile()
-                        print(self.live_score.__repr__())
+                        self.live_score.incrementScore(player=0)
+                        self.saveHistory()
+                        self.live_score.writeToFile(side=self.getPlayerSide())
+                        print(self.live_score.__repr__(side=self.getPlayerSide()))
                     elif n_p2 == 3 and o_p2 == 2 and n_p1 == o_p1:
-                        self.live_score.incrementScore(side=2)
-                        self.live_score.writeToFile()
-                        print(self.live_score.__repr__())          
-            self.rounds_age = 0
-            #print("# Debug: readSideFlag() =", self.readSideFlag())
-        else:
-            self.rounds_age += 1
+                        self.live_score.incrementScore(player=1)
+                        self.saveHistory()
+                        self.live_score.writeToFile(side=self.getPlayerSide())
+                        print(self.live_score.__repr__(side=self.getPlayerSide()))          
+            self.time_ref = time.time()
 
     def updatePID(self):
         if not psutil.pid_exists(self.pid):
@@ -134,32 +232,13 @@ def event_reset(event):
     print("Resetting score..")
     auto_score.resetScores()
     auto_score.getLiveScore().writeToFile()
-    print(auto_score.getLiveScore().__repr__())
-
-def event_p1(event):
-    global auto_score
-    if auto_score.getLiveScore().getPlayingSide() == 2:
-        print("Playing side set to 1")
-        auto_score.getLiveScore().invertScore()
-        auto_score.getLiveScore().setPlayingSide(1)
-        auto_score.getLiveScore().writeToFile()
-        print(auto_score.getLiveScore().__repr__())
-
-def event_p2(event):
-    global auto_score
-    if auto_score.getLiveScore().getPlayingSide() == 1:
-        print("Playing side set to 2")
-        auto_score.getLiveScore().invertScore()
-        auto_score.getLiveScore().setPlayingSide(2)
-        auto_score.getLiveScore().writeToFile()
-        print(auto_score.getLiveScore().__repr__())
+    print(auto_score.getLiveScore().__repr__(side=auto_score.getPlayerSide()))
 
 init_p1 = 0
 init_p2 = 0
 if len(sys.argv) == 3:
     init_p1 = int(sys.argv[1])
     init_p2 = int(sys.argv[2])
-print("Playing side set to 1")
 try:
     auto_score = AutoScore(init_p1, init_p2)
 except KeyboardInterrupt:
@@ -167,10 +246,7 @@ except KeyboardInterrupt:
     sys.exit()
 
 if __name__ == "__main__":
-    keyboard.on_press_key('f5', event_p1, suppress=False)
-    keyboard.on_press_key('f8', event_p2, suppress=False)
     keyboard.on_press_key('f9', event_reset, suppress=False)
-    
     try:
         while True:
             auto_score.updateScore()
