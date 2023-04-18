@@ -39,6 +39,7 @@ class AutoScore:
         self.time_ref = time.time()
         self.prev_rounds = (0, 0)
         self.prev_side = None
+        self.side_t_ref = None
         self.history = {}
         self.most_recent_opponent = None
         self.updateProcess()
@@ -122,18 +123,34 @@ class AutoScore:
         ReadProcessMemory(self.processHandle, ptr, byref(buffer), 1, byref(bytesRead))
         return buffer.value
     
-    def updateScoreOrientation(self, writing=True):
+    def updateScoreOrientation(self, writing=True, protected=False):
+        p_side = self.getPlayerSide()
         if self.prev_side == None:
-            self.prev_side = self.getPlayerSide()
+            self.prev_side = p_side
             return
-        if self.prev_side != self.getPlayerSide():
-            self.prev_side = self.getPlayerSide()
+        if self.prev_side != p_side:
+            if protected:
+                if self.side_t_ref == None:
+                    self.side_t_ref = time.time()
+                    print("Detected side switch. Confirming in 20 seconds")
+                    return
+                else:
+                    if time.time() - self.side_t_ref < 20: # 20 second protection
+                        return
+            self.prev_side = p_side
             if writing:
+                if protected:
+                    print("Confirm succeeded")
                 print("Flipping score to match playing side")
-                self.live_score.writeToFile(side=self.getPlayerSide())
-                print(self.live_score.__repr__(side=self.getPlayerSide()))
-            else:
-                print("\nSilent\n")
+                self.live_score.writeToFile(side=p_side)
+                print(self.live_score.__repr__(side=p_side))
+            self.side_t_ref = None
+            return
+        else:
+            if self.side_t_ref != None:
+                print("Confirm failed")
+            self.side_t_ref = None
+
 
     def readOpponentName(self):
         confirm_name = None
@@ -197,8 +214,8 @@ class AutoScore:
     def updateScore(self):
         if self.checkNewOpponent():
             self.loadHistory(self.readOpponentName())
-            self.updateScoreOrientation(writing=False)
-        self.updateScoreOrientation()
+            self.updateScoreOrientation(writing=False, protected=False)
+        self.updateScoreOrientation(protected=True)
         min_age = 3 # seconds
         o_p1, o_p2 = self.prev_rounds
         n_p1, n_p2 = self.prev_rounds = self.readRounds()
