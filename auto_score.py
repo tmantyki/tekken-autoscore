@@ -54,6 +54,7 @@ class AutoScore:
             self.live_score = self.history[opponentName]
         else:
             print("Creating new record with {}".format(opponentName))
+            self.live_score.writeNameToFile(name=opponentName)
             self.live_score = LiveScore()
             self.history[opponentName] = self.live_score
         self.live_score.writeToFile(side=self.getPlayerSide())
