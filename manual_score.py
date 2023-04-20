@@ -43,5 +43,5 @@ class LiveScore:
       f.write(self.__str__(side))
 
   def writeNameToFile(self, name, filename="opponent_name.txt"):
-    with open(filename, 'w') as f:
+    with open(filename, 'w', encoding="utf-8") as f:
       f.write("Opponent: " + name)
