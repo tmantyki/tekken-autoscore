@@ -132,10 +132,10 @@ class AutoScore:
             if protected:
                 if self.side_t_ref == None:
                     self.side_t_ref = time.time()
-                    print("Detected side switch. Confirming in 20 seconds")
+                    print("Detected side switch. Confirming in 30 seconds")
                     return
                 else:
-                    if time.time() - self.side_t_ref < 20: # 20 second protection
+                    if time.time() - self.side_t_ref < 30: # 30 second protection
                         return
             self.prev_side = p_side
             if writing:
